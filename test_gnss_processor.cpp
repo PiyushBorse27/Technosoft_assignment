@@ -3,17 +3,21 @@
 
 #include "gnss_processor.h"
 
+using namespace std;
+
 #define RUN_TEST(name, expr) \
     do { \
         if (expr) { \
-            std::cout << "[PASS] " << name << std::endl; \
+            cout << "[PASS] " << name << endl; \
         } else { \
-            std::cout << "[FAIL] " << name << std::endl; \
+            cout << "[FAIL] " << name << endl; \
             return EXIT_FAILURE; \
         } \
     } while (0)
 
 int main() {
+    // ---- Original Tests (1-7) ----
+
     // Test 1: Normal frames should succeed.
     {
         GnssProcessor p;
@@ -66,6 +70,40 @@ int main() {
         RUN_TEST("Non-Monotonic Timestamp Rejection", r1 && !r2);
     }
 
-    std::cout << "\nAll tests passed successfully!" << std::endl;
+    // ---- Additional Tests (8-11) ----
+
+    // Test 8: Rejected frame should not block the next valid frame.
+    //         Bad frame in the middle, good frame after it should still pass.
+    {
+        GnssProcessor p;
+        bool r1 = p.process({1000, 12.9716, 77.5946, 1.2f, 8, 1});  // good
+        bool r2 = p.process({1100, 12.9716, 77.5946, 8.0f, 8, 1});  // bad HDOP
+        bool r3 = p.process({1200, 12.9717, 77.5947, 1.2f, 8, 1});  // good
+        RUN_TEST("Rejected Frame Does Not Block Next", r1 && !r2 && r3);
+    }
+
+    // Test 9: fix_type=2 (Mixed) should be accepted — only 0 means no fix.
+    {
+        GnssProcessor p;
+        bool r = p.process({1000, 12.9716, 77.5946, 1.2f, 8, 2});
+        RUN_TEST("Mixed Fix Type Accepted", r);
+    }
+
+    // Test 10: Longitude out of range (< -180) should fail.
+    {
+        GnssProcessor p;
+        bool r = p.process({1000, 0.0, -180.1, 1.2f, 8, 1});
+        RUN_TEST("Out-of-Range Longitude Rejection", !r);
+    }
+
+    // Test 11: Backward timestamp (goes back in time) should fail.
+    {
+        GnssProcessor p;
+        bool r1 = p.process({2000, 12.9716, 77.5946, 1.2f, 8, 1});
+        bool r2 = p.process({1500, 12.9717, 77.5947, 1.2f, 8, 1});
+        RUN_TEST("Backward Timestamp Rejection", r1 && !r2);
+    }
+
+    cout << "\nAll tests passed successfully!" << endl;
     return EXIT_SUCCESS;
 }
